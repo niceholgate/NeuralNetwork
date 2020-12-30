@@ -52,9 +52,7 @@ namespace NeuralNetwork {
             int[] y = yUnrolled.ToArray();
             Matrix<double> X = Matrix<double>.Build.DenseOfColumns(CSVReader.ReadCSVDouble("E:/dev/misc/handwriting_labelled/X.csv")).Transpose();
 
-            
-
-            NetworkManager<int> man = new NetworkManager<int>(X, y, new int[] { 400, 30, 10 });
+            NetworkManager<int> man = new NetworkManager<int>(X, y, new int[] { 400, 50, 200, 10 });
             Vector<double> oneExample = man.GetDataSet().KeepRows(new int[] { 0 }).ToVector();
             man.Net.ForwardPropagate(oneExample);
             Vector<double> oneExampleExpectedOutput = man.GetExpectedOutput(0);
