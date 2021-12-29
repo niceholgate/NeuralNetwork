@@ -7,10 +7,6 @@ using MathNet.Numerics.Distributions;
 using NicUtils;
 
 namespace NeuralNetwork {
-    //public interface ILayer {
-    //    public void ForwardPropagationUpdate(ILayer previousLayer);
-    //    public void BackPropagationUpdate(ILayer nextLayer);
-    //}
     public abstract class Layer {
         public static MatrixBuilder<double> M = Matrix<double>.Build;
         public static VectorBuilder<double> V = Vector<double>.Build;
@@ -20,7 +16,7 @@ namespace NeuralNetwork {
         public Vector<double> RawValues { get; protected set; }
         public Vector<double> Gradients { get; protected set; }
         public Vector<double> Deltas { get; protected set; }
-        public Matrix<double> Weights { get; protected set; }
+        public Matrix<double> Weights { get; set; }
         public Matrix<double> AccDeltas { get; protected set; }
         protected bool initFlag = false;
         protected Layer PrevLayer;
@@ -42,8 +38,9 @@ namespace NeuralNetwork {
         }
         protected void InitCheck() { if (!initFlag) { throw new Exception("The layer has not been initialized."); } }
         public abstract void Initialize(Layer prevLayer, Layer nextLayer);
-        public abstract void ForwardPropagationUpdate();
-        public abstract void BackPropagationUpdate();
+        public abstract void ResetAccDeltas();
+        public abstract void FwdPropUpdate();
+        public abstract void BackPropUpdate();
     }
     
     public class InputLayer : Layer {
@@ -58,11 +55,14 @@ namespace NeuralNetwork {
             this.AccDeltas = M.Dense(nextLayer.NodeCount, NodeCount + 1);
             initFlag = true;
         }
+        public override void ResetAccDeltas() {
+            AccDeltas = M.Dense(NextLayer.NodeCount, NodeCount + 1);
+        }
         public void UpdateInput(Vector<double> inputValues) {
             Input = inputValues;
             freshInputFlag = true;
         }
-        public override void ForwardPropagationUpdate() {
+        public override void FwdPropUpdate() {
             InitCheck();
             if (!freshInputFlag) { throw new Exception("Must call InputLayer.UpdateInput() method before InputLayer.ForwardPropagationUpdate()"); }
             // Leave input layer bias node activation as 1
@@ -71,7 +71,7 @@ namespace NeuralNetwork {
             Gradients = Activations.SubVector(1, NodeCount).Map(Sigmoid.DerivativeFromValue);
             freshInputFlag = false;
         }
-        public override void BackPropagationUpdate() {
+        public override void BackPropUpdate() {
             InitCheck();
             AccDeltas = AccDeltas + NextLayer.Deltas.ToColumnMatrix() * Activations.ToRowMatrix();
         }
@@ -86,19 +86,21 @@ namespace NeuralNetwork {
             this.AccDeltas = M.Dense(nextLayer.NodeCount, NodeCount + 1);
             initFlag = true;
         }
-        public override void ForwardPropagationUpdate() {
+        public override void ResetAccDeltas() {
+            AccDeltas = M.Dense(NextLayer.NodeCount, NodeCount + 1);
+        }
+        public override void FwdPropUpdate() {
             InitCheck();
             RawValues = PrevLayer.Weights * PrevLayer.Activations;
             Activations.SetSubVector(1, NodeCount, RawValues.Map(Sigmoid.Value));
             Gradients = Activations.SubVector(1, NodeCount).Map(Sigmoid.DerivativeFromValue);
         }
-        public override void BackPropagationUpdate() {
+        public override void BackPropUpdate() {
             InitCheck();
             var vec = Weights.ExcludeFirstColumn().Transpose() * NextLayer.Deltas;
             Deltas = vec.PointwiseMultiply(Gradients);
             AccDeltas = AccDeltas + NextLayer.Deltas.ToColumnMatrix() * Activations.ToRowMatrix();
         }
-
     }
     public class OutputLayer : Layer {
         private bool freshTargetOutputFlag = false;
@@ -109,17 +111,23 @@ namespace NeuralNetwork {
             SetNeighbours(prevLayer, nextLayer);
             initFlag = true;
         }
-        public override void ForwardPropagationUpdate() {
+        public override void ResetAccDeltas() {
+            AccDeltas = null;
+        }
+        public override void FwdPropUpdate() {
             InitCheck();
             RawValues = PrevLayer.Weights * PrevLayer.Activations;
             Activations.SetSubVector(1, NodeCount, RawValues.Map(Sigmoid.Value));
             Gradients = Activations.SubVector(1, NodeCount).Map(Sigmoid.DerivativeFromValue);
         }
+        public void SetActivations(Vector<double> newActivations) {
+            Activations.SetSubVector(1, NodeCount, newActivations);
+        }
         public void UpdateTargetOutput(Vector<double> targetOutput) {
             TargetOutput = targetOutput;
             freshTargetOutputFlag = true;
         }
-        public override void BackPropagationUpdate() {
+        public override void BackPropUpdate() {
             InitCheck();
             Deltas = Activations.SubVector(1, NodeCount) - TargetOutput;
             freshTargetOutputFlag = false;

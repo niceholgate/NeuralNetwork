@@ -7,12 +7,15 @@ using MathNet.Numerics.LinearAlgebra;
 using NicUtils;
 
 namespace NeuralNetwork {
-    struct LabelledData<LabelType> {
+    class LabelledData<LabelType> {
         public Matrix<double> DataSet { get; private set; }
         public List<LabelType> DataLabels { get; private set; }
         public List<LabelType> DataLabelsUnique { get; private set; }
-        public List<int> TrainingIndices { get; private set; }
-        public List<int> TestingIndices { get; private set; }
+        public Matrix<double> TestingDataSet { get; private set; }
+        public Matrix<double> TestingTargetOutputs { get; private set; }
+        public List<LabelType> TestingLabels { get; private set; }
+        public Matrix<double> TrainingDataSet { get; private set; }
+        public Matrix<double> TrainingTargetOutputs { get; private set; }
         public LabelledData(string dataSetFilepath, string dataLabelsFilepath, int trainingExamplesPercent) {
             // Load DataSet of inputs
             DataSet = Matrix<double>.Build.DenseOfColumns(CSVReader<double>.ReadCSV(dataSetFilepath));
@@ -27,43 +30,52 @@ namespace NeuralNetwork {
                 else { throw new Exception($"One DataSet dimension ({DataSet.RowCount} x {DataSet.ColumnCount}) must match the number of DataLabels ({DataLabels.Count})."); }
             }
 
+            // Calculate number of training examples to randomly select
             if (trainingExamplesPercent < 1 || trainingExamplesPercent > 100) {
                 throw new Exception("trainingExamplesPercent must be an integer between 1 and 100 inclusive.");
             }
-            // Number of training examples to randomly select
             int nTrainingExamples = Math.Max(1, (int)Math.Round(trainingExamplesPercent / 100.0 * DataLabels.Count));
 
             // Randomly move training indices to testing indices until the desired number are left
-            TrainingIndices = new List<int>(Enumerable.Range(0, DataLabels.Count));
-            TestingIndices = new List<int>();
+            List<int> trainingIndices = new List<int>(Enumerable.Range(0, DataLabels.Count));
+            List<int> testingIndices = new List<int>();
             Random r = new Random();
-            while (TrainingIndices.Count > nTrainingExamples) {
-                int trainingRemoveIndex = r.Next(0, TrainingIndices.Count);
-                TestingIndices.Add(TrainingIndices[trainingRemoveIndex]);
-                TrainingIndices.RemoveAt(trainingRemoveIndex);
+            while (trainingIndices.Count > nTrainingExamples) {
+                int trainingRemoveIndex = r.Next(0, trainingIndices.Count);
+                testingIndices.Add(trainingIndices[trainingRemoveIndex]);
+                trainingIndices.RemoveAt(trainingRemoveIndex);
             }
-            TestingIndices.Sort();
+            testingIndices.Sort();
+
+            CreateTrainingDataSet(trainingIndices);
+            CreateTrainingTargetOutputs(trainingIndices);
+            CreateTestingDataSet(testingIndices);
+            CreateTestingTargetOutputs(testingIndices);
         }
-        public Matrix<double> GetTrainingDataSet() {
-            return DataSet.KeepRows(TrainingIndices);
+        
+        private void CreateTrainingDataSet(List<int> TrainingIndices) {
+            TrainingDataSet = DataSet.KeepRows(TrainingIndices);
         }
-        public Matrix<double> GetTrainingTargetOutputs() {
+        private void CreateTrainingTargetOutputs(List<int> TrainingIndices) {
             List<Vector<double>> vecs = new List<Vector<double>>();
             for (int i = 0; i < TrainingIndices.Count; i++) {
                 vecs.Add(GetExpectedOutput(TrainingIndices[i]));
             }
-            return Matrix<double>.Build.DenseOfRowVectors(vecs);
+            TrainingTargetOutputs = Matrix<double>.Build.DenseOfRowVectors(vecs);
         }
-        public Matrix<double> GetTestingDataSet() {
-            return DataSet.KeepRows(TestingIndices);
+        private void CreateTestingDataSet(List<int> TestingIndices) {
+            TestingDataSet = DataSet.KeepRows(TestingIndices);
         }
-        public Matrix<double> GetTestingTargetOutputs() {
+        private void CreateTestingTargetOutputs(List<int> TestingIndices) {
             List<Vector<double>> vecs = new List<Vector<double>>();
+            TestingLabels = new List<LabelType>();
             for (int i = 0; i < TestingIndices.Count; i++) {
                 vecs.Add(GetExpectedOutput(TestingIndices[i]));
+                TestingLabels.Add(DataLabels.ElementAt(TestingIndices[i]));
             }
-            return Matrix<double>.Build.DenseOfRowVectors(vecs);
+            TestingTargetOutputs = Matrix<double>.Build.DenseOfRowVectors(vecs);
         }
+        
         private Vector<double> GetExpectedOutput(int dataLabelIndex) {
             LabelType dataLabel = DataLabels[dataLabelIndex];
             Vector<double> expectedOutput = Vector<double>.Build.Dense(DataLabelsUnique.Count);
